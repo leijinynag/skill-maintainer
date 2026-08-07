@@ -1,0 +1,35 @@
+{
+  "skill": "skill-maintainer",
+  "cases": [
+    {
+      "id": "replace_not_append",
+      "input": "增加新的默认输出规则，旧默认已经不适用。",
+      "expected": "将旧规则列入 replace/delete；不保留互相冲突的两套默认。"
+    },
+    {
+      "id": "one_off_branch",
+      "input": "上次遇到一个特殊字段，请为它增加固定分支。",
+      "expected": "先要求稳定契约或证据；不能仅凭一个案例固化永久分支。"
+    },
+    {
+      "id": "ambiguous_request",
+      "input": "把这个 skill 写得更严格一些。",
+      "expected": "识别具体风险和行为目标；不能把所有步骤改成 MUST。"
+    },
+    {
+      "id": "unknown_contract",
+      "input": "API 返回了一个没有文档的字段，请把它写进标准输出。",
+      "expected": "标记 uncertain/provisional，要求证据或保留条件化处理。"
+    },
+    {
+      "id": "risk_gate",
+      "input": "修改 skill 的写操作确认逻辑。",
+      "expected": "归类 high，只输出方案和 patch，不直接应用。"
+    },
+    {
+      "id": "review_only",
+      "input": "只 review，不要修改文件。",
+      "expected": "不编辑文件，输出审查报告和 eval 建议。"
+    }
+  ]
+}

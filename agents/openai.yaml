@@ -1,0 +1,7 @@
+interface:
+  display_name: "Skill Maintainer"
+  short_description: "Refactor skills without bloat or rigid workflows."
+  default_prompt: "Use $skill-maintainer to audit and simplify this Agent skill before changing it."
+
+policy:
+  allow_implicit_invocation: true

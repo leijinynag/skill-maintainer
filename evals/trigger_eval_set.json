@@ -1,0 +1,32 @@
+{
+  "skill": "skill-maintainer",
+  "should_trigger": [
+    {
+      "id": "trigger_001",
+      "input": "帮我给这个 SKILL.md 增加一个边界条件，但先检查哪些旧规则会被替换。",
+      "expected": "审查 skill 目录，建立变更账本，并在行为修改前分类风险。"
+    },
+    {
+      "id": "trigger_002",
+      "input": "这个 skill 越改越长了，帮我找出重复、过时和应该下沉到 reference 的内容。",
+      "expected": "执行结构审计和删减审查，不默认追加规则。"
+    },
+    {
+      "id": "trigger_003",
+      "input": "请 review 这个 Agent skill 是否已经变成僵硬的 workflow。",
+      "expected": "检查判断空间、固定分支和未经证实的强规则，只做 review。"
+    }
+  ],
+  "should_not_trigger": [
+    {
+      "id": "negative_001",
+      "input": "帮我写一个普通的 Python CLI。",
+      "expected": "不触发 skill-maintainer。"
+    },
+    {
+      "id": "negative_002",
+      "input": "解释什么是 Git rebase。",
+      "expected": "不触发 skill-maintainer。"
+    }
+  ]
+}
