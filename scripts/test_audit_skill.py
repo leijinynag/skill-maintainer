@@ -105,6 +105,82 @@ class AuditSkillTests(unittest.TestCase):
         self.assertIn("content.duplicate_rule", ids)
         self.assertIn("content.possible_conflict", ids)
 
+    def test_negative_rule_density_and_unpaired_prohibition_are_reported(self) -> None:
+        root = self.make_skill(
+            "- The agent MUST NOT invent fields.\n"
+            "- The agent MUST NOT add branches.\n"
+            "- The agent MUST NOT ask questions.\n"
+        )
+        report = audit_skill.build_report(root, "", None)
+        ids = {item["id"] for item in report["findings"]}
+        self.assertIn("content.negative_rule_density", ids)
+        self.assertIn("content.unpaired_prohibition", ids)
+        self.assertGreaterEqual(
+            report["baseline_metrics"]["behavior_signals"]["unpaired_prohibition_count"],
+            3,
+        )
+        self.assertEqual(report["validation"]["errors"], 0)
+        self.assertEqual(report["validation"]["warnings"], 0)
+
+    def test_paired_guardrail_is_not_unpaired(self) -> None:
+        root = self.make_skill(
+            "- The agent MUST NOT invent fields; report unknown fields as uncertain.\n"
+        )
+        report = audit_skill.build_report(root, "", None)
+        ids = {item["id"] for item in report["findings"]}
+        self.assertNotIn("content.unpaired_prohibition", ids)
+
+    def test_adjacent_negative_rules_are_reported_as_a_signal(self) -> None:
+        root = self.make_skill(
+            "- The agent MUST NOT invent fields.\n"
+            "- The agent MUST NOT invent states.\n"
+        )
+        report = audit_skill.build_report(root, "", None)
+        self.assertIn(
+            "content.repeated_negation",
+            {item["id"] for item in report["findings"]},
+        )
+
+    def test_empty_loop_and_unconditional_clarification_are_reported(self) -> None:
+        root = self.make_skill(
+            "- Check again until fully certain.\n"
+            "- Ask the user for confirmation.\n"
+        )
+        report = audit_skill.build_report(root, "", None)
+        ids = {item["id"] for item in report["findings"]}
+        self.assertIn("content.possible_empty_loop", ids)
+        self.assertIn("content.clarification_without_uncertainty", ids)
+
+    def test_bounded_loop_and_conditional_clarification_are_not_reported(self) -> None:
+        root = self.make_skill(
+            "- Re-check the result when new evidence changes the validation target; stop when complete.\n"
+            "- Ask for clarification only when the contract is ambiguous or evidence is missing.\n"
+        )
+        report = audit_skill.build_report(root, "", None)
+        ids = {item["id"] for item in report["findings"]}
+        self.assertNotIn("content.possible_empty_loop", ids)
+        self.assertNotIn("content.clarification_without_uncertainty", ids)
+
+    def test_generic_quality_guidance_is_reported_as_possible_no_op(self) -> None:
+        root = self.make_skill("- Be thorough and ensure quality.\n")
+        report = audit_skill.build_report(root, "", None)
+        self.assertIn("content.possible_no_op", {item["id"] for item in report["findings"]})
+
+    def test_security_skill_with_many_guardrails_is_not_fatal(self) -> None:
+        root = self.make_skill(
+            "- The agent MUST NOT expose credentials; redact them before reporting.\n"
+            "- The agent MUST NOT bypass permission checks; stop and report the blocker.\n"
+            "- The agent MUST NOT write without confirmation; request confirmation when required.\n"
+        )
+        report = audit_skill.build_report(root, "review security guardrails", None)
+        self.assertIn("content.negative_rule_density", {item["id"] for item in report["findings"]})
+        self.assertEqual(report["validation"]["errors"], 0)
+        self.assertEqual(report["validation"]["warnings"], 0)
+        self.assertEqual(
+            audit_skill.main([str(root), "--request", "review security guardrails"]),
+            0,
+        )
+
     def test_append_only_diff_is_reported(self) -> None:
         root = self.make_skill("# Demo\n")
         subprocess.run(["git", "-C", str(root), "init", "-q"], check=True)

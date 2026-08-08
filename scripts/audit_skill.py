@@ -26,6 +26,41 @@ HEADING_RE = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*$")
 RULE_RE = re.compile(r"^\s*(?:[-*+]|\d+[.)])\s+(.+?)\s*$")
 STRONG_RE = re.compile(r"\b(MUST|SHOULD|MAY)\b", re.I)
 FENCE_RE = re.compile(r"^```")
+NEGATIVE_RE = re.compile(
+    r"\b(?:MUST\s+NOT|MUSTN'T|DO\s+NOT|DON'T|NEVER|NO)\b|"
+    r"\b(?:禁止|不要|不得|切勿|避免)\b",
+    re.I,
+)
+LOOP_CUE_RE = re.compile(
+    r"\b(?:again|re-?check|retry|repeat|continue\s+until|keep\s+asking|"
+    r"until\s+fully|until\s+certain)\b|"
+    r"(?:再检查|重新检查|反复|继续询问|直到完全|直到确认|不断)",
+    re.I,
+)
+CLARIFICATION_RE = re.compile(
+    r"\b(?:ask|question|clarif(?:y|ication)|confirm)\b|"
+    r"(?:询问|澄清|确认|追问)",
+    re.I,
+)
+ALTERNATIVE_RE = re.compile(
+    r"\b(?:instead|prefer|report|label|preserve|use|record|stop|return|"
+    r"choose|state|pair|scope|fallback|recover)\b|"
+    r"(?:优先|改为|报告|标记|保留|使用|记录|停止|返回|选择|说明|配对|"
+    r"范围|回退|恢复|处理)",
+    re.I,
+)
+STOP_OR_GAIN_RE = re.compile(
+    r"\b(?:stop|done|complete|completion|blocker|evidence|gain|change|"
+    r"validation|result|condition|input|target)\b|"
+    r"(?:停止|完成|阻塞|证据|信息增益|改变|验证|结果|条件|输入|目标)",
+    re.I,
+)
+NO_OP_RE = re.compile(
+    r"\b(?:be\s+thorough|be\s+careful|ensure\s+quality|do\s+your\s+best|"
+    r"maintain\s+high\s+quality|handle\s+carefully)\b|"
+    r"(?:认真|仔细|确保质量|保证质量|尽力|高质量处理)",
+    re.I,
+)
 
 
 def normalize(value: str) -> str:
@@ -131,6 +166,11 @@ def count_metrics(text: str) -> Dict[str, int]:
     lines = text.splitlines()
     rules = [RULE_RE.match(line).group(1) for line in lines if RULE_RE.match(line)]
     strong = Counter(match.group(1).upper() for line in lines for match in [STRONG_RE.search(line)] if match)
+    negative_rule_count = sum(
+        bool(NEGATIVE_RE.search(rule))
+        for rule in rules
+    )
+    negative_density = negative_rule_count / max(1, len(rules))
     return {
         "lines": len(lines),
         "non_empty_lines": sum(bool(line.strip()) for line in lines),
@@ -139,14 +179,173 @@ def count_metrics(text: str) -> Dict[str, int]:
         "strong_must": strong["MUST"],
         "strong_should": strong["SHOULD"],
         "strong_may": strong["MAY"],
+        "negative_rule_count": negative_rule_count,
+        "negative_rule_density": round(negative_density, 3),
     }
 
 
 def add_finding(findings: List[Dict[str, Any]], finding_id: str, severity: str, message: str, path: Optional[Path] = None) -> None:
-    item: Dict[str, Any] = {"id": finding_id, "severity": severity, "message": message}
+    item: Dict[str, Any] = {
+        "id": finding_id,
+        "severity": severity,
+        "kind": "fact",
+        "message": message,
+    }
     if path is not None:
         item["path"] = str(path)
+        item["evidence"] = str(path)
     findings.append(item)
+
+
+def add_line_finding(
+    findings: List[Dict[str, Any]],
+    finding_id: str,
+    severity: str,
+    message: str,
+    path: Path,
+    line_number: int,
+    *,
+    kind: str = "fact",
+    inference: Optional[str] = None,
+    unknown: Optional[str] = None,
+) -> None:
+    item: Dict[str, Any] = {
+        "id": finding_id,
+        "severity": severity,
+        "kind": kind,
+        "message": message,
+        "path": str(path),
+        "line": line_number,
+        "evidence": f"{path}:{line_number}",
+    }
+    if inference:
+        item["inference"] = inference
+    if unknown:
+        item["unknown"] = unknown
+    findings.append(item)
+
+
+def content_lines(text: str) -> Iterable[Tuple[int, str]]:
+    fenced = False
+    for line_number, line in enumerate(text.splitlines(), 1):
+        if FENCE_RE.match(line.strip()):
+            fenced = not fenced
+            continue
+        if not fenced and line.strip():
+            yield line_number, line.strip()
+
+
+def inspect_behavior_signals(text: str, skill_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
+    """Report textual risk signals without deciding semantic correctness."""
+
+    findings: List[Dict[str, Any]] = []
+    lines = list(content_lines(text))
+    rule_lines = [(number, RULE_RE.match(line).group(1)) for number, line in lines if RULE_RE.match(line)]
+    negative_lines = [(number, line) for number, line in rule_lines if NEGATIVE_RE.search(line)]
+    negative_count = len(negative_lines)
+    rule_count = len(rule_lines)
+    density = round(negative_count / max(1, rule_count), 3)
+    signals = {
+        "negative_rule_count": negative_count,
+        "negative_rule_density": density,
+        "unpaired_prohibition_count": 0,
+        "repeated_negation_count": 0,
+        "possible_empty_loop_count": 0,
+        "clarification_without_uncertainty_count": 0,
+        "possible_no_op_count": 0,
+    }
+
+    if negative_count >= 3 and density >= 0.5:
+        add_line_finding(
+            findings,
+            "content.negative_rule_density",
+            "info",
+            f"Negative rules are {negative_count}/{rule_count} list rules (density {density:.3f}); review whether each is necessary and paired with a preferred action.",
+            skill_path,
+            negative_lines[0][0],
+            kind="fact",
+            inference="High negative-rule density can make guidance rigid, but may be justified by security or permission contracts.",
+            unknown="The text audit cannot determine whether the guardrails are semantically necessary.",
+        )
+
+    for index, (line_number, line) in enumerate(negative_lines):
+        if not ALTERNATIVE_RE.search(line):
+            signals["unpaired_prohibition_count"] += 1
+            add_line_finding(
+                findings,
+                "content.unpaired_prohibition",
+                "info",
+                "Negative rule has no same-line preferred action, scope, or recovery path.",
+                skill_path,
+                line_number,
+                kind="fact",
+                inference="The rule may leave the agent without a useful next action.",
+                unknown="A preferred action may be documented in surrounding prose.",
+            )
+        if index > 0 and line_number == negative_lines[index - 1][0] + 1:
+            signals["repeated_negation_count"] += 1
+            add_line_finding(
+                findings,
+                "content.repeated_negation",
+                "info",
+                "Adjacent negative rules may be near-synonymous or may be replacing one another.",
+                skill_path,
+                line_number,
+                kind="fact",
+                inference="Several adjacent prohibitions can increase cognitive load and encourage literal workflow behavior.",
+                unknown="The audit cannot determine whether the rules protect distinct contracts.",
+            )
+
+    for line_number, line in lines:
+        if (
+            RULE_RE.match(line)
+            and NO_OP_RE.search(line)
+            and not STOP_OR_GAIN_RE.search(line)
+        ):
+            signals["possible_no_op_count"] += 1
+            add_line_finding(
+                findings,
+                "content.possible_no_op",
+                "info",
+                "Generic quality guidance has no visible observable action or completion criterion.",
+                skill_path,
+                line_number,
+                kind="fact",
+                inference="The sentence may add context load without changing default behavior.",
+                unknown="A concrete behavior may be defined in surrounding prose.",
+            )
+        if LOOP_CUE_RE.search(line) and not STOP_OR_GAIN_RE.search(line):
+            signals["possible_empty_loop_count"] += 1
+            add_line_finding(
+                findings,
+                "content.possible_empty_loop",
+                "info",
+                "Loop-like instruction has no nearby checkable stop condition or information-gain target.",
+                skill_path,
+                line_number,
+                kind="fact",
+                inference="The instruction may cause repeated inspection, planning, or clarification without progress.",
+                unknown="Runtime traces are required to establish that an actual loop occurred.",
+            )
+        if CLARIFICATION_RE.search(line) and not re.search(
+            r"(?:if|when|unless|because|evidence|uncertain|missing|ambiguous|"
+            r"safe|contract|证据|不确定|缺失|模糊|安全|契约|条件)",
+            line,
+            re.I,
+        ):
+            signals["clarification_without_uncertainty_count"] += 1
+            add_line_finding(
+                findings,
+                "content.clarification_without_uncertainty",
+                "info",
+                "Clarification instruction has no visible uncertainty, evidence, or condition trigger.",
+                skill_path,
+                line_number,
+                kind="fact",
+                inference="The rule may cause unnecessary questioning when a safe default is available.",
+                unknown="The activation condition may be defined in another file or paragraph.",
+            )
+    return signals, findings
 
 
 def inspect_files(root: Path, skill_path: Path) -> Tuple[Dict[str, Any], List[Dict[str, Any]]]:
@@ -183,6 +382,9 @@ def inspect_files(root: Path, skill_path: Path) -> Tuple[Dict[str, Any], List[Di
         if len(locations) > 1:
             add_finding(findings, "content.duplicate_rule", "warning", f"Near-identical list rule appears at lines {locations}: {rule}", skill_path)
 
+    behavior_signals, behavior_findings = inspect_behavior_signals(text, skill_path)
+    findings.extend(behavior_findings)
+
     strong_lines: List[Tuple[int, str]] = []
     for line_number, line in enumerate(text.splitlines(), 1):
         if STRONG_RE.search(line):
@@ -213,6 +415,7 @@ def inspect_files(root: Path, skill_path: Path) -> Tuple[Dict[str, Any], List[Di
             add_finding(findings, "references.broken", "error", f"Referenced local path does not exist: {raw}", skill_path)
 
     metrics["skill"] = count_metrics(text)
+    metrics["behavior_signals"] = behavior_signals
     metrics["frontmatter"] = fields
     return metrics, findings
 
@@ -300,7 +503,20 @@ def build_report(root: Path, request: str, git_ref: Optional[str]) -> Dict[str, 
         )
     diff = git.get("diff", {})
     if diff.get("insertions", 0) > 40 and diff.get("deletions", 0) == 0:
-        findings.append({"id": "complexity.append_only", "severity": "warning", "message": "The Git diff adds many lines without deletions; review whether old rules should be replaced or removed."})
+        findings.append(
+            {
+                "id": "complexity.append_only",
+                "severity": "warning",
+                "kind": "fact",
+                "message": "The Git diff adds many lines without deletions; review whether old rules should be replaced or removed.",
+                "evidence": {
+                    "insertions": diff.get("insertions", 0),
+                    "deletions": diff.get("deletions", 0),
+                },
+                "inference": "The change may be append-only complexity growth.",
+                "unknown": "The audit cannot determine whether the added behavior is worth the complexity.",
+            }
+        )
     report = {
         "report_version": "0.1.0",
         "target": {"path": str(root.resolve()), "name": root.name},
@@ -321,7 +537,12 @@ def build_report(root: Path, request: str, git_ref: Optional[str]) -> Dict[str, 
         "proposed_changes": [],
         "applied_changes": [],
         "eval_cases": [],
-        "validation": {"script": "audit_skill.py", "errors": sum(item["severity"] == "error" for item in findings), "warnings": sum(item["severity"] == "warning" for item in findings)},
+        "validation": {
+            "script": "audit_skill.py",
+            "errors": sum(item["severity"] == "error" for item in findings),
+            "warnings": sum(item["severity"] == "warning" for item in findings),
+            "info_signals": sum(item["severity"] == "info" for item in findings),
+        },
     }
     return report
 

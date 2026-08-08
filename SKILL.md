@@ -58,6 +58,23 @@ JSON report to the project-level `.skill-maintainer/` directory by default.
    ambiguous requests, unknown inputs, and the changed behavior. Report additions,
    changes, deletions, moves, remaining uncertainty, and net complexity change.
 
+Every action in the protocol should have a progress signal: new evidence, lower
+risk, an edit, or a validation result. Continue when the next action has a stated
+gain. Stop and report the blocker when repeated inspection, planning, or
+clarification produces no new evidence or state change. A retry is justified only
+when its input, validation target, or expected information gain changes.
+
+Each ordered step needs a checkable completion criterion. Prefer "all modified
+rules have an owner and eval" over vague criteria such as "understand the skill".
+Do not add a new step merely to narrate work that the agent would already do or
+that produces no observable change.
+
+Prune no-op guidance: a sentence earns its place only when it changes the agent's
+default behavior or supplies a contract, decision criterion, or checkable result.
+Replace vague advice such as "be thorough" or "ensure quality" with the observable
+action or evidence that matters, or delete it when the model already does it by
+default.
+
 ## Preserve Judgment
 
 Keep these as explicit contracts when needed: permissions, safety, data integrity,
@@ -77,6 +94,20 @@ step from evidence when multiple paths are valid. Do not:
 Use `MUST` only for non-negotiable contracts, `SHOULD` for defaults that may yield to
 evidence, and `MAY` for optional tactics. If evidence is insufficient, label the
 item uncertain and preserve a bounded stopping condition.
+
+Write the desired action and its decision criteria before writing a prohibition.
+Keep a negative rule only when it protects a verified contract, safety boundary,
+permission rule, data-integrity invariant, or irreversible operation. Pair such a
+guardrail with the preferred action, scope, or recovery path. Prefer "report the
+unknown field and preserve it as uncertain" to a bare "do not invent fields".
+Several near-synonymous prohibitions should become one scoped rule or be removed.
+High negative-rule density is a review signal, not an automatic failure: security
+and permission skills may legitimately need more hard guardrails.
+
+When reviewing an existing skill, inspect its context pointers as part of behavior.
+The pointer should name the material and the distinct condition that activates it.
+Keep always-loaded instructions short; disclose branch-specific detail behind a
+reachable reference. Do not split a document merely to make it look modular.
 
 ## Git and Change Safety
 

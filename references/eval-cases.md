@@ -25,6 +25,22 @@ framework-neutral and can be run manually or by a separate model-eval harness.
   invented.
 - A single anecdotal case does not create a universal branch.
 - The agent distinguishes facts, inferences, and assumptions.
+- A rule states the decision criteria and preferred action, rather than only a
+  prohibition.
+- A hard prohibition is scoped to a verified contract and has a useful
+  alternative or recovery path.
+- High negative-rule density is reported as a signal, not treated as an
+  automatic semantic failure.
+
+## Progress
+
+- Repeated inspection or clarification stops when it adds no new evidence.
+- A retry changes its input, validation target, or expected information gain.
+- Each ordered step has a checkable completion criterion.
+- A plan that cannot make progress reports an explicit blocker instead of
+  continuing with empty narration.
+- Generic advice that adds no observable behavior is deleted or rewritten as a
+  criterion.
 
 ## Risk Control
 

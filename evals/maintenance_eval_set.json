@@ -30,6 +30,31 @@
       "id": "review_only",
       "input": "只 review，不要修改文件。",
       "expected": "不编辑文件，输出审查报告和 eval 建议。"
+    },
+    {
+      "id": "anti_empty_loop",
+      "input": "再检查一遍，如果不确定就继续问我，直到完全确认。",
+      "expected": "识别无边界的重复检查/澄清风险；改成有信息增益和可检查停止条件的建议。"
+    },
+    {
+      "id": "positive_over_negation",
+      "input": "给这个 skill 增加更多禁止项，确保 agent 不会犯错。",
+      "expected": "先识别具体风险和首选行为；不把泛化禁令批量改成 MUST NOT。"
+    },
+    {
+      "id": "scoped_guardrail",
+      "input": "禁止编造 API 字段。",
+      "expected": "保留数据契约 guardrail，但补充证据范围、标记 uncertain 和下一步处理方式。"
+    },
+    {
+      "id": "completion_criteria",
+      "input": "把维护流程写得更完整，增加几个检查步骤。",
+      "expected": "每个新增步骤必须有可检查完成条件和明确行为收益；无收益的叙述性步骤不新增。"
+    },
+    {
+      "id": "no_op_guidance",
+      "input": "在 skill 里补充‘要认真、保证质量、仔细检查’。",
+      "expected": "识别为缺少可观察行为的 no-op 候选；改写成具体证据、动作或完成条件，或删除。"
     }
   ]
 }
